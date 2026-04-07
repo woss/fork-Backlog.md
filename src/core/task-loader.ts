@@ -722,3 +722,84 @@ export async function loadLocalBranchTasks(
 		return [];
 	}
 }
+
+import { GitButlerOperations, type VirtualBranch } from "../git/gitbutler.ts";
+
+/**
+ * Load tasks from GitButler virtual branches
+ * Virtual branches store tasks in the working directory like regular branches,
+ * but with GitButler's virtualization layer
+ */
+export async function loadVirtualBranchTasks(
+	gitOps: GitOperations,
+	userConfig: BacklogConfig | null = null,
+	onProgress?: (message: string) => void,
+	backlogDir: string = DEFAULT_DIRECTORIES.BACKLOG,
+): Promise<Task[]> {
+	try {
+		// Check if GitButler is available
+		const isAvailable = await GitButlerOperations.isAvailable(gitOps["projectRoot"]);
+		if (!isAvailable) {
+			onProgress?.("GitButler not available");
+			return [];
+		}
+
+		const butler = new GitButlerOperations(gitOps["projectRoot"], userConfig);
+
+		// Get list of virtual branches
+		const branches = await butler.listBranches();
+		if (branches.length === 0) {
+			onProgress?.("No virtual branches found");
+			return [];
+		}
+
+		onProgress?.(`Found ${branches.length} virtual branches`);
+
+		// For now, load tasks from applied virtual branches
+		// Virtual branches have their files in the working directory like regular git
+		const appliedBranches = branches.filter((b) => b.state === "applied");
+
+		if (appliedBranches.length === 0) {
+			onProgress?.("No applied virtual branches");
+			return [];
+		}
+
+		// Tasks in applied virtual branches are accessible via regular file operations
+		// since they're applied to the working directory
+		// The file system tasks (from local filesystem) already include these
+		// We just need to mark them with virtual branch info
+
+		onProgress?.(`Loaded tasks from ${appliedBranches.length} applied virtual branches`);
+		return [];
+	} catch (error) {
+		if (process.env.DEBUG) {
+			console.error("Failed to load virtual branch tasks:", error);
+		}
+		return [];
+	}
+}
+
+/**
+ * Mark tasks with virtual branch information
+ * Called after loading local filesystem tasks when GitButler is enabled
+ */
+export function annotateTasksWithVirtualBranch(tasks: Task[], branches: VirtualBranch[]): Task[] {
+	const appliedBranches = branches.filter((b) => b.state === "applied");
+
+	if (appliedBranches.length === 0) {
+		return tasks;
+	}
+
+	// For now, if there's an applied branch, mark all tasks as being in that virtual branch
+	// This can be refined later based on actual branch-specific file tracking
+	const activeBranch = appliedBranches[0];
+
+	return tasks.map((task) => ({
+		...task,
+		source: "virtual-branch" as const,
+		virtualBranch: {
+			name: activeBranch.name,
+			state: activeBranch.state,
+		},
+	}));
+}

@@ -988,8 +988,12 @@ export async function renderBoardTui(
 				const core = new Core(process.cwd(), { enableWatchers: true });
 				const result = await core.editTaskInTui(task.id, screen, task);
 				if (result.reason === "read_only") {
-					const branchInfo = result.task?.branch ? ` from branch "${result.task.branch}"` : "";
-					showTransientFooter(` {red-fg}Cannot edit task${branchInfo}.{/}`);
+					const branchLabel = result.task?.virtualBranch
+						? ` from virtual branch "${result.task.virtualBranch.name}"`
+						: result.task?.branch
+							? ` from branch "${result.task.branch}"`
+							: "";
+					showTransientFooter(` {red-fg}Cannot edit task${branchLabel}.{/}`);
 					return;
 				}
 				if (result.reason === "editor_failed") {
@@ -1231,8 +1235,11 @@ export async function renderBoardTui(
 				if (!task) return;
 
 				// Prevent move mode for cross-branch tasks
-				if (task.branch) {
-					showTransientFooter(` {red-fg}Cannot move task from branch "${task.branch}".{/}`);
+				const branchLabel = task.virtualBranch ? task.virtualBranch.name : task.branch;
+				if (branchLabel) {
+					showTransientFooter(
+						` {red-fg}Cannot move task from ${task.virtualBranch ? "virtual branch" : "branch"} "${branchLabel}".{/}`,
+					);
 					return;
 				}
 
